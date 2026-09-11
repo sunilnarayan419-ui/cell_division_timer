@@ -1,0 +1,6 @@
+{
+  "name": "Cell Division Timer",
+  "description": "Production biotechnology backend and life-sciences data platform for tracking, analyzing, and modeling cell-cycle and division dynamics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

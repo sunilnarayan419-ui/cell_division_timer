@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: cell_division_api
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=Cell Division Timer API
+      - APP_ENV=production
+      - DEBUG=False
+      - API_PREFIX=/api/v1
+      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/cell_division_db
+      - LOG_LEVEL=INFO
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+
+  db:
+    image: postgres:16-alpine
+    container_name: cell_division_postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=cell_division_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cell_division_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
