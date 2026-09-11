@@ -68,3 +68,6 @@ venv.bak/
 # Operating system
 .DS_Store
 Thumbs.db
+
+# APi Key
+.env
