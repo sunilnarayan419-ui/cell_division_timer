@@ -33,8 +33,8 @@ def export_csv(
     status_code=status.HTTP_200_OK,
 )
 async def import_csv(
+    service: CSVServiceDep,
     file: UploadFile = File(..., description="CSV file containing division records"),
-    service: CSVServiceDep = None,
 ) -> dict:
     """Upload and parse CSV dataset of cell divisions."""
     content_bytes = await file.read()

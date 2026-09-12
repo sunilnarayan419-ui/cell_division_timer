@@ -1,0 +1,162 @@
+<svg viewBox="0 0 1280 970" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="970" fill="url(#bg)"/>
+
+  <!-- Title -->
+  <text x="640" y="46" text-anchor="middle" fill="#f8fafc" font-size="28" font-weight="700">Cell Division Timer — System Architecture</text>
+  <text x="640" y="72" text-anchor="middle" fill="#94a3b8" font-size="14">Biotechnology &amp; Life-Sciences Analytics Platform · FastAPI + React + PostgreSQL/SQLite + NCBI E-utilities</text>
+
+  <!-- ================= COMPONENT ARCHITECTURE ================= -->
+
+  <!-- React Frontend -->
+  <rect x="440" y="104" width="400" height="64" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="640" y="128" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="700">React Frontend (Vite + TypeScript)</text>
+  <text x="640" y="147" text-anchor="middle" fill="#94a3b8" font-size="11.5">Dashboard · Dataset Explorer · Kinetics Simulator · Literature Evidence (live)</text>
+
+  <line x1="640" y1="168" x2="640" y2="204" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="656" y="190" fill="#64748b" font-size="10.5">HTTP / JSON (src/lib/api.ts)</text>
+
+  <!-- FastAPI -->
+  <rect x="390" y="204" width="500" height="64" rx="10" fill="#1e293b" stroke="#34d399" stroke-width="1.5"/>
+  <text x="640" y="228" text-anchor="middle" fill="#e2e8f0" font-size="15" font-weight="700">FastAPI Application  ·  /api/v1 (stable)  +  /api/v2 (beta)</text>
+  <text x="640" y="247" text-anchor="middle" fill="#94a3b8" font-size="11.5">Versioning middleware · CORS · request validation · centralized error handling</text>
+
+  <!-- fan out lines -->
+  <line x1="500" y1="268" x2="220" y2="304" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="640" y1="268" x2="640" y2="304" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="780" y1="268" x2="1060" y2="304" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Cell/Division Services -->
+  <rect x="60" y="304" width="320" height="72" rx="10" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="220" y="330" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">Cell &amp; Division Services</text>
+  <text x="220" y="349" text-anchor="middle" fill="#94a3b8" font-size="11">CellService · DivisionService · CSVService</text>
+  <text x="220" y="365" text-anchor="middle" fill="#94a3b8" font-size="11">create / update / validate / import-export</text>
+
+  <!-- Analytics Service -->
+  <rect x="480" y="304" width="320" height="72" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="640" y="330" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">Analytics Service</text>
+  <text x="640" y="349" text-anchor="middle" fill="#94a3b8" font-size="11">summary · by cell-type / condition /</text>
+  <text x="640" y="365" text-anchor="middle" fill="#94a3b8" font-size="11">temperature / generation · batch QC</text>
+
+  <!-- Literature / NCBI Service -->
+  <rect x="900" y="304" width="320" height="72" rx="10" fill="#1e293b" stroke="#f472b6" stroke-width="1.5"/>
+  <text x="1060" y="330" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">Literature / NCBI Service</text>
+  <text x="1060" y="349" text-anchor="middle" fill="#94a3b8" font-size="11">NCBIService — isolated, no DB dependency</text>
+  <text x="1060" y="365" text-anchor="middle" fill="#94a3b8" font-size="11">ESearch → ESummary → (optional) EFetch</text>
+
+  <!-- down arrows to layer 3 -->
+  <line x1="220" y1="376" x2="220" y2="412" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="640" y1="376" x2="640" y2="412" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="1060" y1="376" x2="1060" y2="412" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Repository Layer -->
+  <rect x="60" y="412" width="320" height="64" rx="10" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="220" y="438" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">Repository Layer</text>
+  <text x="220" y="457" text-anchor="middle" fill="#94a3b8" font-size="11">SQLAlchemy 2.0 · CellRepository / DivisionRepository</text>
+
+  <!-- Biological Analytics -->
+  <rect x="480" y="412" width="320" height="64" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="640" y="438" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">Biological Analytics (utils/biology.py)</text>
+  <text x="640" y="457" text-anchor="middle" fill="#94a3b8" font-size="11">kinetics formulas · outlier / QC rules · descriptive stats</text>
+
+  <!-- HTTPX -->
+  <rect x="900" y="412" width="320" height="64" rx="10" fill="#1e293b" stroke="#f472b6" stroke-width="1.5"/>
+  <text x="1060" y="438" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">HTTPX (async client)</text>
+  <text x="1060" y="457" text-anchor="middle" fill="#94a3b8" font-size="11">timeouts · error normalization · no secrets logged</text>
+
+  <!-- down to storage -->
+  <line x1="220" y1="476" x2="220" y2="512" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="1060" y1="476" x2="1060" y2="512" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- PostgreSQL / SQLite -->
+  <rect x="60" y="512" width="320" height="64" rx="10" fill="#0b3b2e" stroke="#34d399" stroke-width="1.5"/>
+  <text x="220" y="538" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">PostgreSQL (prod) / SQLite (dev)</text>
+  <text x="220" y="557" text-anchor="middle" fill="#94a3b8" font-size="11">Alembic-managed schema · never a committed .db file</text>
+
+  <!-- PubMed -->
+  <rect x="900" y="512" width="320" height="64" rx="10" fill="#3b0b2a" stroke="#f472b6" stroke-width="1.5"/>
+  <text x="1060" y="538" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">NCBI E-utilities / PubMed</text>
+  <text x="1060" y="557" text-anchor="middle" fill="#94a3b8" font-size="11">External literature database (public, free-tier API key)</text>
+
+  <!-- ================= DATA PIPELINE ================= -->
+  <text x="640" y="640" text-anchor="middle" fill="#f8fafc" font-size="18" font-weight="700">Experimental Data → Research Insight Pipeline</text>
+
+  <!-- pipeline stages -->
+  <g font-size="12.5">
+    <!-- helper macro via repeated rects -->
+  </g>
+
+  <!-- Row of pipeline boxes -->
+  <!-- 1 -->
+  <rect x="40"  y="672" width="150" height="66" rx="8" fill="#1e293b" stroke="#64748b"/>
+  <text x="115" y="700" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Experimental</text>
+  <text x="115" y="716" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Data</text>
+  <text x="115" y="731" text-anchor="middle" fill="#94a3b8" font-size="9.5">CSV import / API</text>
+
+  <line x1="190" y1="705" x2="222" y2="705" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- 2 -->
+  <rect x="222" y="672" width="150" height="66" rx="8" fill="#1e293b" stroke="#64748b"/>
+  <text x="297" y="700" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Validation</text>
+  <text x="297" y="716" text-anchor="middle" fill="#94a3b8" font-size="9.5">Pydantic + DB</text>
+  <text x="297" y="731" text-anchor="middle" fill="#94a3b8" font-size="9.5">check constraints</text>
+
+  <line x1="372" y1="705" x2="404" y2="705" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- 3 -->
+  <rect x="404" y="672" width="150" height="66" rx="8" fill="#1e293b" stroke="#64748b"/>
+  <text x="479" y="700" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Cell Division</text>
+  <text x="479" y="716" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Metrics</text>
+  <text x="479" y="731" text-anchor="middle" fill="#94a3b8" font-size="9.5">T_div, μ = ln(2)/T_d</text>
+
+  <line x1="554" y1="705" x2="586" y2="705" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- 4 -->
+  <rect x="586" y="672" width="150" height="66" rx="8" fill="#1e293b" stroke="#64748b"/>
+  <text x="661" y="700" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Statistical</text>
+  <text x="661" y="716" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Analysis</text>
+  <text x="661" y="731" text-anchor="middle" fill="#94a3b8" font-size="9.5">mean / median / CV</text>
+
+  <line x1="736" y1="705" x2="768" y2="705" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- 5 -->
+  <rect x="768" y="672" width="150" height="66" rx="8" fill="#1e293b" stroke="#64748b"/>
+  <text x="843" y="700" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Biological QC</text>
+  <text x="843" y="716" text-anchor="middle" fill="#94a3b8" font-size="9.5">outlier / plausibility</text>
+  <text x="843" y="731" text-anchor="middle" fill="#94a3b8" font-size="9.5">flags (configurable)</text>
+
+  <line x1="918" y1="705" x2="950" y2="705" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- 6 -->
+  <rect x="950" y="672" width="150" height="66" rx="8" fill="#3b0b2a" stroke="#f472b6"/>
+  <text x="1025" y="700" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Literature</text>
+  <text x="1025" y="716" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Evidence</text>
+  <text x="1025" y="731" text-anchor="middle" fill="#94a3b8" font-size="9.5">NCBI / PubMed</text>
+
+  <line x1="1100" y1="705" x2="1132" y2="705" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- 7 -->
+  <rect x="1090" y="672" width="150" height="66" rx="8" fill="#0b3b2e" stroke="#34d399"/>
+  <text x="1165" y="700" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Research</text>
+  <text x="1165" y="716" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="700">Insights</text>
+  <text x="1165" y="731" text-anchor="middle" fill="#94a3b8" font-size="9.5">dashboards / export</text>
+
+  <!-- ================= LEGEND / NOTES ================= -->
+  <rect x="40" y="790" width="1200" height="150" rx="10" fill="#111827" stroke="#334155"/>
+  <text x="64" y="818" fill="#e2e8f0" font-size="14" font-weight="700">Notes</text>
+  <text x="64" y="842" fill="#94a3b8" font-size="12">• Dependency direction is strictly downward: API → Service → Repository → Database. NCBIService is isolated (no DB / AnalyticsService coupling).</text>
+  <text x="64" y="864" fill="#94a3b8" font-size="12">• NCBI_API_KEY lives only in the backend's local .env (never committed, never sent to the frontend, never logged).</text>
+  <text x="64" y="886" fill="#94a3b8" font-size="12">• The dataset shown in the dashboard (100 records) is clearly labeled synthetic/demo data — not real wet-lab measurements.</text>
+  <text x="64" y="908" fill="#94a3b8" font-size="12">• This diagram reflects the audited, repaired implementation as of this delivery — not an aspirational or marketing architecture.</text>
+
+  <text x="1240" y="950" text-anchor="end" fill="#475569" font-size="10">Cell Division Timer · docs/system_design.svg</text>
+</svg>

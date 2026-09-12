@@ -49,10 +49,13 @@ app = FastAPI(
 )
 
 # Configure Cross-Origin Resource Sharing (CORS)
+# Note: browsers reject `allow_credentials=True` combined with a wildcard
+# origin, so credentials are only enabled when explicit origins are configured.
+_cors_allows_credentials = "*" not in settings.CORS_ORIGINS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=_cors_allows_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -2,7 +2,6 @@ import React, { useState, useMemo } from "react";
 import {
   Activity,
   AlertTriangle,
-  ArrowDownToLine,
   BarChart3,
   CheckCircle2,
   Clock,
@@ -26,12 +25,13 @@ import {
 } from "lucide-react";
 import { BENCHMARK_CELLS, DivisionBenchmark } from "./data/synthetic_data";
 import recordsData from "./data/synthetic_records.json";
+import { ApiError, LiteratureArticle, searchLiterature } from "./lib/api";
 
 const records: DivisionBenchmark[] = recordsData as DivisionBenchmark[];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<
-    "overview" | "dataset" | "calculator" | "analytics" | "api" | "deployment"
+    "overview" | "dataset" | "calculator" | "analytics" | "literature" | "api" | "deployment"
   >("overview");
 
   // Dataset filter states
@@ -50,6 +50,31 @@ export default function App() {
 
   // API Versioning tab state
   const [apiVersionTab, setApiVersionTab] = useState<"v1" | "v2" | "headers">("v1");
+
+  // Live literature search state (calls the backend's NCBI/PubMed integration)
+  const [literatureQuery, setLiteratureQuery] = useState("cell division kinetics");
+  const [literatureResults, setLiteratureResults] = useState<LiteratureArticle[] | null>(null);
+  const [literatureLoading, setLiteratureLoading] = useState(false);
+  const [literatureError, setLiteratureError] = useState<string | null>(null);
+
+  const runLiteratureSearch = async () => {
+    if (!literatureQuery.trim()) return;
+    setLiteratureLoading(true);
+    setLiteratureError(null);
+    try {
+      const result = await searchLiterature(literatureQuery, { retmax: 8 });
+      setLiteratureResults(result.articles);
+    } catch (err) {
+      setLiteratureResults(null);
+      setLiteratureError(
+        err instanceof ApiError
+          ? err.message
+          : "Could not reach the backend API. Is it running at the configured API base URL?"
+      );
+    } finally {
+      setLiteratureLoading(false);
+    }
+  };
 
   // Filtered dataset
   const filteredRecords = useMemo(() => {
@@ -162,15 +187,6 @@ export default function App() {
     }));
   }, []);
 
-  const handleDownloadZip = () => {
-    const link = document.createElement("a");
-    link.href = "/cell_division_timer_fastapi.zip";
-    link.download = "cell_division_timer_fastapi.zip";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   const handleDownloadCsv = () => {
     const csvContent =
       "data:text/csv;charset=utf-8," +
@@ -233,15 +249,6 @@ export default function App() {
                 <span>26/26 Pytest Tests</span>
               </div>
             </div>
-
-            <button
-              id="download-zip-btn"
-              onClick={handleDownloadZip}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs sm:text-sm shadow-sm transition-colors cursor-pointer"
-            >
-              <ArrowDownToLine className="w-4 h-4" />
-              <span>Download Project ZIP</span>
-            </button>
           </div>
         </div>
 
@@ -252,6 +259,7 @@ export default function App() {
             { id: "dataset", label: "100 Benchmark Records", icon: Database },
             { id: "calculator", label: "Kinetics & Outlier Simulator", icon: Cpu },
             { id: "analytics", label: "Analytics & Batch QC", icon: BarChart3 },
+            { id: "literature", label: "Literature Evidence (Live)", icon: Search },
             { id: "api", label: "REST API Specification", icon: Code2 },
             { id: "deployment", label: "DevOps & Deployment", icon: Terminal },
           ].map((tab) => {
@@ -991,6 +999,121 @@ export default function App() {
                 })}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TAB: LITERATURE EVIDENCE (LIVE NCBI/PUBMED SEARCH) */}
+        {activeTab === "literature" && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Search className="w-5 h-5 text-emerald-400" />
+                Literature Evidence (Live NCBI / PubMed Search)
+              </h2>
+              <p className="mt-1 text-sm text-slate-400 max-w-3xl">
+                This panel calls the running FastAPI backend at{" "}
+                <code className="text-emerald-300">GET /api/v1/literature/search</code>, which
+                in turn queries NCBI E-utilities (ESearch → ESummary). It requires the backend
+                to have a valid <code className="text-emerald-300">NCBI_API_KEY</code> configured
+                locally — the key itself is never sent to or stored by this frontend.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col sm:flex-row gap-3">
+              <input
+                type="text"
+                value={literatureQuery}
+                onChange={(e) => setLiteratureQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && runLiteratureSearch()}
+                placeholder="e.g. yeast cell cycle temperature"
+                className="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
+              />
+              <button
+                onClick={runLiteratureSearch}
+                disabled={literatureLoading}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm transition-colors cursor-pointer"
+              >
+                {literatureLoading ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Search className="w-4 h-4" />
+                )}
+                Search PubMed
+              </button>
+            </div>
+
+            {literatureError && (
+              <div className="p-4 rounded-xl bg-red-950/40 border border-red-900/60 text-sm text-red-300 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-semibold">Literature search failed</div>
+                  <div className="text-red-400/90 mt-0.5">{literatureError}</div>
+                  <div className="text-red-400/70 mt-1 text-xs">
+                    Make sure the backend is running locally and{" "}
+                    <code>NCBI_API_KEY</code> is set in its <code>.env</code> file.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!literatureError && literatureResults && literatureResults.length === 0 && (
+              <div className="p-6 rounded-xl bg-slate-900/60 border border-slate-800 text-sm text-slate-400 text-center">
+                No PubMed articles matched that query.
+              </div>
+            )}
+
+            {literatureResults && literatureResults.length > 0 && (
+              <div className="space-y-3">
+                {literatureResults.map((article) => (
+                  <div
+                    key={article.pmid}
+                    className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <h3 className="text-sm font-semibold text-white leading-snug">
+                        {article.title || "(untitled record)"}
+                      </h3>
+                      <span className="shrink-0 text-[10px] font-mono px-2 py-1 rounded bg-slate-950 border border-slate-800 text-slate-400">
+                        PMID {article.pmid}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 text-xs text-slate-400">
+                      {article.authors.length > 0 && (
+                        <span>{article.authors.slice(0, 4).join(", ")}
+                          {article.authors.length > 4 ? ", et al." : ""} · </span>
+                      )}
+                      {article.journal && <span className="italic">{article.journal}</span>}
+                      {article.publication_date && <span> ({article.publication_date})</span>}
+                    </div>
+                    {article.abstract && (
+                      <p className="mt-2 text-xs text-slate-300 leading-relaxed">{article.abstract}</p>
+                    )}
+                    <div className="mt-2 flex items-center gap-3 text-xs">
+                      {article.pubmed_url && (
+                        <a
+                          href={article.pubmed_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-emerald-400 hover:text-emerald-300"
+                        >
+                          View on PubMed →
+                        </a>
+                      )}
+                      {article.doi && (
+                        <a
+                          href={`https://doi.org/${article.doi}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-slate-400 hover:text-slate-300"
+                        >
+                          DOI: {article.doi}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

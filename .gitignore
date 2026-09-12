@@ -1,8 +1,32 @@
+# Node / frontend
 node_modules/
 build/
 dist/
 coverage/
-.DS_Store
-*.log
+
+# Environments & secrets
 .env*
 !.env.example
+
+# Python (nested backend also has its own .gitignore; this covers root-level tooling)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Databases (recreated via Alembic migrations + seed scripts; never commit a live DB)
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# Generated exports (recreated via `scripts/export_data.py` / the export endpoint)
+output/*.csv
+!output/.gitkeep

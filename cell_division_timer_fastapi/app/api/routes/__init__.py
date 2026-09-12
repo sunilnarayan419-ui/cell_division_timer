@@ -1,7 +1,7 @@
 """API routes module."""
 
 from fastapi import APIRouter
-from app.api.routes import analytics, cells, data_transfer, divisions, health
+from app.api.routes import analytics, cells, data_transfer, divisions, health, literature
 
 api_router = APIRouter()
 
@@ -10,3 +10,4 @@ api_router.include_router(cells.router, prefix="/cells", tags=["Cells & Samples"
 api_router.include_router(divisions.router, prefix="/divisions", tags=["Cell Division Records"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Biotechnology Analytics"])
 api_router.include_router(data_transfer.router, prefix="/data", tags=["Data Import & Export"])
+api_router.include_router(literature.router, prefix="/literature", tags=["Literature Evidence (NCBI/PubMed)"])
