@@ -19,6 +19,11 @@ COPY scripts ./scripts
 # Runtime data/output directories (mounted as volumes in docker-compose)
 RUN mkdir -p /app/data /app/output
 
+# Run as a non-root user rather than container-default root.
+RUN groupadd --system app && useradd --system --gid app --home-dir /app app \
+    && chown -R app:app /app
+USER app
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

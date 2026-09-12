@@ -12,6 +12,7 @@ Security:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Optional
 from xml.etree import ElementTree
@@ -22,6 +23,36 @@ from app.core.config import get_settings
 from app.schemas.literature import LiteratureArticle
 
 logger = logging.getLogger("cell_division_timer.ncbi")
+
+# A single shared, connection-pooling AsyncClient reused across all NCBI
+# requests (and across the NCBIService instances FastAPI creates per
+# request), instead of opening/closing a brand new TCP+TLS connection for
+# every single call. Created lazily on first use and closed explicitly from
+# the application's shutdown hook (see app.main.lifespan).
+_http_client: Optional[httpx.AsyncClient] = None
+
+# Bounded retry policy for NCBI's documented rate limit (HTTP 429). We never
+# retry other 4xx/5xx responses: those are not transient in a way a short
+# retry can help with, and retrying them aggressively would itself risk
+# violating NCBI's "responsible usage" expectations.
+_MAX_RETRIES = 2
+_RETRY_BACKOFF_SECONDS = 0.5
+
+
+def _get_shared_client() -> httpx.AsyncClient:
+    """Return the process-wide shared httpx.AsyncClient, creating it if needed."""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient()
+    return _http_client
+
+
+async def close_ncbi_http_client() -> None:
+    """Close the shared NCBI HTTP client. Call this on application shutdown."""
+    global _http_client
+    if _http_client is not None and not _http_client.is_closed:
+        await _http_client.aclose()
+    _http_client = None
 
 
 class NCBIServiceError(Exception):
@@ -79,45 +110,73 @@ class NCBIService:
             )
 
     async def _get_json(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
-        """Issue a GET request against an E-utilities JSON endpoint with unified error handling."""
+        """Issue a GET request against an E-utilities JSON endpoint with unified error handling.
+
+        Uses the shared, connection-pooling AsyncClient (one TCP/TLS connection
+        reused across calls) rather than opening a new client per request.
+        HTTP 429 (rate limit) is retried a bounded number of times with a
+        short backoff, honoring ``Retry-After`` when NCBI provides it; all
+        other 4xx/5xx responses are surfaced immediately rather than retried.
+        """
         url = f"{self.base_url}/{endpoint}"
-        try:
-            async with httpx.AsyncClient(timeout=self.settings.NCBI_TIMEOUT) as client:
-                response = await client.get(url, params=params)
-        except httpx.TimeoutException as exc:
-            logger.error("NCBI request to %s timed out", endpoint)
-            raise NCBIUpstreamError(
-                "The NCBI E-utilities service did not respond in time. Please try again.",
-                status_code=504,
-            ) from exc
-        except httpx.RequestError as exc:
-            logger.error("NCBI request to %s failed: %s", endpoint, exc.__class__.__name__)
-            raise NCBIUpstreamError(
-                "Unable to reach the NCBI E-utilities service.",
-                status_code=502,
-            ) from exc
+        client = _get_shared_client()
 
-        if response.status_code == 429:
-            logger.warning("NCBI rate limit hit on %s", endpoint)
-            raise NCBIUpstreamError(
-                "NCBI rate limit exceeded. Please slow down requests and try again shortly.",
-                status_code=429,
-            )
-        if response.status_code >= 400:
-            logger.error("NCBI returned HTTP %s for %s", response.status_code, endpoint)
-            raise NCBIUpstreamError(
-                f"NCBI E-utilities returned an error (HTTP {response.status_code}).",
-                status_code=502,
-            )
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                response = await client.get(url, params=params, timeout=self.settings.NCBI_TIMEOUT)
+            except httpx.TimeoutException as exc:
+                logger.error("NCBI request to %s timed out", endpoint)
+                raise NCBIUpstreamError(
+                    "The NCBI E-utilities service did not respond in time. Please try again.",
+                    status_code=504,
+                ) from exc
+            except httpx.RequestError as exc:
+                logger.error("NCBI request to %s failed: %s", endpoint, exc.__class__.__name__)
+                raise NCBIUpstreamError(
+                    "Unable to reach the NCBI E-utilities service.",
+                    status_code=502,
+                ) from exc
 
-        try:
-            return response.json()
-        except ValueError as exc:
-            logger.error("NCBI returned a non-JSON/malformed response from %s", endpoint)
-            raise NCBIUpstreamError(
-                "Received a malformed response from NCBI E-utilities.",
-                status_code=502,
-            ) from exc
+            if response.status_code == 429:
+                if attempt < _MAX_RETRIES:
+                    retry_after = response.headers.get("retry-after")
+                    try:
+                        delay = float(retry_after) if retry_after else _RETRY_BACKOFF_SECONDS * (attempt + 1)
+                    except ValueError:
+                        delay = _RETRY_BACKOFF_SECONDS * (attempt + 1)
+                    logger.warning(
+                        "NCBI rate limit hit on %s (attempt %d/%d); retrying in %.2fs",
+                        endpoint,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                logger.warning("NCBI rate limit hit on %s; retries exhausted", endpoint)
+                raise NCBIUpstreamError(
+                    "NCBI rate limit exceeded. Please slow down requests and try again shortly.",
+                    status_code=429,
+                )
+            if response.status_code >= 400:
+                logger.error("NCBI returned HTTP %s for %s", response.status_code, endpoint)
+                raise NCBIUpstreamError(
+                    f"NCBI E-utilities returned an error (HTTP {response.status_code}).",
+                    status_code=502,
+                )
+
+            try:
+                return response.json()
+            except ValueError as exc:
+                logger.error("NCBI returned a non-JSON/malformed response from %s", endpoint)
+                raise NCBIUpstreamError(
+                    "Received a malformed response from NCBI E-utilities.",
+                    status_code=502,
+                ) from exc
+
+        # Unreachable in practice (the loop always returns or raises above),
+        # but keeps type checkers happy about a guaranteed return value.
+        raise NCBIUpstreamError("NCBI E-utilities request failed after retries.", status_code=502)
 
     async def search_pubmed(self, query: str, retmax: Optional[int] = None) -> dict[str, Any]:
         """Search PubMed using NCBI ESearch and return the raw ESearch JSON payload."""
@@ -173,10 +232,10 @@ class NCBIService:
             "rettype": "abstract",
         }
         url = f"{self.base_url}/efetch.fcgi"
+        client = _get_shared_client()
 
         try:
-            async with httpx.AsyncClient(timeout=self.settings.NCBI_TIMEOUT) as client:
-                response = await client.get(url, params=params)
+            response = await client.get(url, params=params, timeout=self.settings.NCBI_TIMEOUT)
         except httpx.TimeoutException:
             logger.warning("NCBI EFetch timed out; continuing without abstracts")
             return {}

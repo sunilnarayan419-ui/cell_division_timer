@@ -11,26 +11,42 @@ from app.api.routes import api_router
 from app.api.routes.health import router as health_router
 from app.api.v2 import api_router_v2
 from app.core.config import get_settings
-from app.core.database import Base, engine
+from app.core.database import check_db_health
 from app.core.logging import logger
 from app.core.middleware import APIVersioningMiddleware
+from app.services.ncbi_service import close_ncbi_http_client
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan context manager for startup and shutdown hooks."""
+    """Application lifespan context manager for startup and shutdown hooks.
+
+    Database schema management is owned exclusively by Alembic
+    (``alembic upgrade head``), not by the application process. Running
+    ``Base.metadata.create_all()`` here as well as maintaining Alembic
+    migrations is an architectural inconsistency: the two can silently
+    diverge (e.g. a column added in a migration but never applied because
+    create_all() already "satisfied" SQLAlchemy for tables that already
+    exist). Startup here only *verifies* connectivity and logs a clear
+    error if migrations have not been applied; it never creates or alters
+    tables. (`Base.metadata.create_all()` is still used, deliberately, by
+    the isolated in-memory test database in tests/conftest.py.)
+    """
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION} [{settings.APP_ENV}]")
-    # Initialize database tables
-    try:
-        Base.metadata.create_all(bind=engine)
-        logger.info(f"Database initialized successfully ({engine.dialect.name})")
-    except Exception as exc:
-        logger.error(f"Failed to initialize database tables: {exc}")
+    health = check_db_health()
+    if health["status"] == "healthy":
+        logger.info(f"Database connectivity verified ({health['dialect']}, {health['latency_ms']}ms)")
+    else:
+        logger.error(
+            "Database is not reachable at startup. Ensure the database is running and "
+            f"that migrations have been applied (`alembic upgrade head`). Detail: {health.get('error')}"
+        )
 
     yield
 
+    await close_ncbi_http_client()
     logger.info("Shutting down Cell Division Timer API gracefully")
 
 

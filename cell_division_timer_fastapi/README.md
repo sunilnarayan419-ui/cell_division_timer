@@ -148,7 +148,7 @@ cell_division_timer_fastapi/
 ├── scripts/
 │   ├── export_data.py               # CLI tool to export database to CSV
 │   ├── seed.py                      # CLI tool to populate database
-│   └── test_ncbi.py                 # Manual live NCBI connectivity check (uses your local .env)
+│   └── ncbi_manual_check.py                 # Manual live NCBI connectivity check (uses your local .env)
 ├── tests/
 │   ├── conftest.py                  # In-memory SQLite fixtures & TestClient
 │   ├── test_analytics.py            # Analytics routes test suite
@@ -198,9 +198,16 @@ Individual time-lapse mitosis / cytokinesis observation events.
 - `generation` (INTEGER, Indexed): Lineage generational index.
 - `division_start_time` (TIMESTAMPTZ, Indexed): Onset of mitosis.
 - `division_end_time` (TIMESTAMPTZ, Indexed): Completion of cytokinesis.
-- `division_duration_minutes` (FLOAT, Indexed): Calculated duration ($T_{end} - T_{start}$).
+- `division_duration_minutes` (FLOAT, Indexed): Official duration. Calculated as
+  $T_{end} - T_{start}$ unless `duration_override_minutes` is set.
 - `cell_cycle_duration_hours` (FLOAT, Indexed): Complete doubling cycle time.
-- `growth_rate` (FLOAT, Indexed): Specific growth rate $\mu = \frac{\ln(2)}{T_d}$.
+- `growth_rate` (FLOAT, Indexed): Official specific growth rate. Calculated as
+  $\mu = \frac{\ln(2)}{T_d}$ unless `growth_rate_override` is set.
+- `duration_override_minutes` / `duration_override_reason` (FLOAT / TEXT, nullable): Explicit,
+  reason-documented manual override of `division_duration_minutes`. Always both-null or
+  both-set (`ck_duration_override_requires_reason`).
+- `growth_rate_override` / `growth_rate_override_reason` (FLOAT / TEXT, nullable): Same pattern
+  for `growth_rate` (`ck_growth_rate_override_requires_reason`).
 - `is_outlier` (BOOLEAN, Indexed): Outlier classification flag.
 - `quality_flag` (VARCHAR(32), Indexed): Status (`PASS`, `OUTLIER_DURATION_EXCESSIVE`, `OUTLIER_TEMPERATURE_EXTREME`, `SUSPECT_DIVISION_EXCEEDS_CYCLE`).
 - `notes` (TEXT, Optional): Microscopist observation notes.
@@ -212,6 +219,8 @@ Individual time-lapse mitosis / cytokinesis observation events.
 - `ck_positive_division_duration`: `division_duration_minutes >= 0`
 - `ck_positive_cell_cycle_duration`: `cell_cycle_duration_hours > 0`
 - `ck_plausible_temperature`: `temperature_celsius >= -10.0 AND temperature_celsius <= 100.0`
+- `ck_duration_override_requires_reason`: `(duration_override_minutes IS NULL) = (duration_override_reason IS NULL)`
+- `ck_growth_rate_override_requires_reason`: `(growth_rate_override IS NULL) = (growth_rate_override_reason IS NULL)`
 - Composite Index: `ix_divisions_batch_condition (experimental_batch, experimental_condition)`
 - Composite Index: `ix_divisions_cell_gen (cell_id, generation)`
 
@@ -231,16 +240,30 @@ $$N(t) = N_0 \cdot 2^{t / T_d} = N_0 \cdot e^{\mu t}$$
 $$\mu = \frac{\ln(2)}{T_d} \approx \frac{0.693147}{T_d} \quad [\text{hr}^{-1}]$$
 
 ### 3. Biological Reference Ranges & Outlier Detection
-The system compares observed kinetic parameters against established biological baselines:
-* *Saccharomyces cerevisiae*: Division duration 15–45 min; Cell cycle 1.2–4.5 hr; Normal temperature 22–37°C.
-* *Escherichia coli*: Division duration 8–35 min; Cell cycle 0.3–2.0 hr; Normal temperature 25–42°C.
-* *Homo sapiens* (Mammalian): Division duration 40–150 min; Cell cycle 14.0–36.0 hr; Normal temperature 35–39°C.
-* *Mus musculus* (Murine): Division duration 45–160 min; Cell cycle 12.0–32.0 hr; Normal temperature 35–39°C.
 
-Flagging logic tags measurements as outliers if:
-1. Active cytokinesis duration exceeds the entire generation cell cycle ($T_{div} \ge 60 \cdot T_d$).
-2. Incubation temperature falls outside physiological limits ($T < 10^\circ\text{C}$ or $T > 50^\circ\text{C}$).
-3. Observed division duration exceeds $3.0\times$ typical baseline (indicative of metaphase arrest or mitotic checkpoint failure).
+**These are QC / reference-screening thresholds, not biological absolutes or literature
+citations.** `app.utils.biology.BIOLOGICAL_REFERENCE_RANGES` and `GLOBAL_LIMITS` encode
+reasonable, documented domain heuristics for flagging implausible data entry — they are an
+assumed/reference dataset, not a sourced one, and must not be read as peer-reviewed
+diagnostic cutoffs:
+
+* *Saccharomyces cerevisiae*: Division duration 15–55 min; Cell cycle 1.0–4.5 hr; Normal temperature 18–40°C.
+* *Escherichia coli*: Division duration 8–35 min; Cell cycle 0.25–2.5 hr; Normal temperature 15–44°C.
+* *Schizosaccharomyces pombe*: Division duration 15–60 min; Cell cycle 1.8–5.0 hr; Normal temperature 18–38°C.
+* *Homo sapiens* (Mammalian): Division duration 35–160 min; Cell cycle 14.0–40.0 hr; Normal temperature 32–41°C.
+* *Mus musculus* (Murine): Division duration 35–150 min; Cell cycle 12.0–36.0 hr; Normal temperature 32–41°C.
+
+Global physical plausibility limits (`GLOBAL_LIMITS`, checked before any organism-specific
+range): division duration 1–600 min, cell cycle 0.1–120 hr, temperature 0–60°C.
+
+Flagging logic (`evaluate_biological_metrics`) tags a record as an outlier if, in order:
+1. It falls outside the global physical limits above.
+2. Active division duration meets or exceeds the entire cell cycle for that record
+   ($T_{div} \ge 60 \cdot T_d$).
+3. It falls more than 2× outside the organism-specific reference range above (i.e. below
+   `0.5 × min` or above `2.0 × max` for duration/cycle, or more than 5°C outside the
+   organism's normal temperature band) — only evaluated when the parent cell's `organism`
+   matches one of the reference organisms above; unrecognized organisms skip this check.
 
 ### 4. Descriptive Statistics & Dispersion
 For any parameter vector $X = [x_1, \dots, x_n]$:
@@ -391,7 +414,12 @@ Normalized LiteratureArticle[] response
 
 `NCBIService` has no dependency on the database, `AnalyticsService`, or any other unrelated
 service — it is a pure external-API client, kept behind its own dependency
-(`app.api.deps.get_ncbi_service`).
+(`app.api.deps.get_ncbi_service`). All ESearch/ESummary/EFetch calls share a single
+process-wide, connection-pooling `httpx.AsyncClient` (closed on application shutdown)
+instead of opening a new client per request. HTTP 429 (rate limit) responses are retried
+a small, bounded number of times with backoff — honoring NCBI's `Retry-After` header when
+present — instead of failing immediately; every other 4xx/5xx response is surfaced right
+away rather than retried.
 
 ### Request
 
@@ -443,7 +471,7 @@ A small script is provided for a one-off, human-run check against the real NCBI 
 your own local `.env` (never used by the automated test suite):
 
 ```bash
-python3 scripts/test_ncbi.py
+python3 scripts/ncbi_manual_check.py
 ```
 
 ---
@@ -515,6 +543,14 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ---
 
 ## Database Migrations (Alembic)
+
+Schema management is owned **exclusively** by Alembic. The application no longer calls
+`Base.metadata.create_all()` at startup (that inconsistency — running both create_all() and
+Alembic migrations — has been fixed); `create_all()` is now used only inside the isolated
+in-memory database that backs the automated test suite (`tests/conftest.py`). A fresh
+PostgreSQL database must be initialized with `alembic upgrade head` before the API will
+start successfully or `scripts/seed.py` will run (it now refuses to run against a database
+whose tables don't exist yet, rather than creating them itself).
 
 ```bash
 # Apply all pending migrations to database
@@ -640,6 +676,14 @@ docker run -p 8000:8000 --env DATABASE_URL=sqlite:///./cell_division.db cell-div
   reproducible from Alembic migrations, and demo data comes from `scripts/seed.py`.
 - If you ever suspect a real secret was committed to this (or a forked) repository, rotate
   it at the provider immediately — do not rely solely on removing it from a future commit.
+- **A prior local `.env` file in this project contained a live NCBI API key.** It was never
+  committed to git history (verified via `git log --all`), and has been removed from this
+  delivery. Because it existed in plaintext outside of git, it should still be treated as
+  potentially exposed — **rotate it at NCBI** before reusing this project, and only ever
+  put a real key in a local, git-ignored `.env` going forward.
+- **Container hardening**: the Docker image now runs the application as a non-root user
+  and ships a `.dockerignore` so `.env`, virtualenvs, caches, and the SQLite dev database
+  are never copied into the build context or the image.
 
 ---
 

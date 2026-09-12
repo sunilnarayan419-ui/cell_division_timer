@@ -39,9 +39,30 @@ class CellDivisionRecord(Base, TimestampMixin):
     # Timing metrics
     division_start_time = Column(DateTime(timezone=True), nullable=False, index=True)
     division_end_time = Column(DateTime(timezone=True), nullable=False, index=True)
+
+    # `division_duration_minutes` and `growth_rate` are the OFFICIAL, STORED values
+    # used everywhere else in the application (QC evaluation, filtering, sorting,
+    # analytics, CSV export). They are always either:
+    #   (a) mathematically derived from the source measurements
+    #       (division_start_time/division_end_time, cell_cycle_duration_hours), or
+    #   (b) an explicit, reason-documented manual override (see the
+    #       *_override / *_override_reason columns below).
+    # They must NEVER silently diverge from (a) unless (b) applies. This is
+    # enforced in DivisionService, not just at the schema layer, so it also
+    # holds for updates that only touch one side of a derived pair.
     division_duration_minutes = Column(Float, nullable=False, index=True)
     cell_cycle_duration_hours = Column(Float, nullable=False, index=True)
     growth_rate = Column(Float, nullable=False, index=True)  # Specific growth rate mu (hr^-1)
+
+    # Explicit manual overrides (OBSERVED != CALCULATED != OVERRIDE).
+    # These are ONLY populated when a scientist deliberately overrides the
+    # mathematically-derived value (e.g. correcting for known instrument clock
+    # drift). They are never set implicitly, and a value/reason pair must
+    # always be supplied together (enforced by CellDivisionCreate/Update).
+    duration_override_minutes = Column(Float, nullable=True)
+    duration_override_reason = Column(Text, nullable=True)
+    growth_rate_override = Column(Float, nullable=True)
+    growth_rate_override_reason = Column(Text, nullable=True)
 
     # Quality control & biological classification
     is_outlier = Column(Boolean, nullable=False, default=False, index=True)
@@ -68,6 +89,14 @@ class CellDivisionRecord(Base, TimestampMixin):
         CheckConstraint(
             "temperature_celsius >= -10.0 AND temperature_celsius <= 100.0",
             name="ck_plausible_temperature",
+        ),
+        CheckConstraint(
+            "(duration_override_minutes IS NULL) = (duration_override_reason IS NULL)",
+            name="ck_duration_override_requires_reason",
+        ),
+        CheckConstraint(
+            "(growth_rate_override IS NULL) = (growth_rate_override_reason IS NULL)",
+            name="ck_growth_rate_override_requires_reason",
         ),
         Index("ix_divisions_batch_condition", "experimental_batch", "experimental_condition"),
         Index("ix_divisions_cell_gen", "cell_id", "generation"),

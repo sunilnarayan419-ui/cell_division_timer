@@ -3,12 +3,45 @@
 **A quantitative cell-cycle kinetics & biological data analysis platform**
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688.svg)
 
 **Cell Division Timer** is a biotechnology-focused software platform for recording, validating, analyzing, and interpreting **cell division and cell-cycle kinetics data** generated from time-lapse microscopy and laboratory experiments.
 
 The platform combines **cell biology, quantitative kinetics, database engineering, REST API development, statistical analysis, and biological quality control** into a single application — designed as a foundation for future integration with **live-cell imaging systems, laboratory information management systems (LIMS), computational biology pipelines, and bioprocess analytics platforms**.
+
+> **This project is a production-oriented research prototype**, not a validated clinical or
+> diagnostic system — see [Scientific Disclaimer](#️-scientific-disclaimer).
+
+---
+
+## 🛠️ Recent Engineering Audit
+
+This delivery is the result of a full backend audit and hardening pass. Highlights:
+
+- **Fixed a scientific data-integrity gap**: `division_duration_minutes` and `growth_rate`
+  could previously be supplied directly on create, silently overriding what the timestamps
+  / cell-cycle duration implied. They are now always calculated, with an explicit,
+  reason-documented `*_override` / `*_override_reason` field pair for the rare case a
+  manual correction is genuinely needed (DB-enforced: an override and its reason are always
+  set, or cleared, together — never one without the other).
+- **Fixed a PATCH validation gap**: updating only one of `division_start_time` /
+  `division_end_time` is now validated against the *merged* final record, not just the
+  fields present in that request, so a partial update can no longer produce an
+  end-before-start record.
+- **Removed the `create_all()` / Alembic inconsistency**: schema management is now owned
+  exclusively by Alembic migrations (`alembic upgrade head`) in both the API startup path
+  and the seed script; `Base.metadata.create_all()` remains only inside the isolated
+  in-memory test database.
+- **NCBI client hardening**: requests now reuse a single pooled `httpx.AsyncClient` instead
+  of opening a new one per call, and HTTP 429 responses are retried a bounded number of
+  times with backoff (honoring `Retry-After`) instead of failing immediately.
+- **Docker/security hardening**: added a `.dockerignore`, the container now runs as a
+  non-root user, and a live NCBI API key that had been left in a local `.env` file (never
+  committed to git) was removed from the delivered project — **rotate that key if you
+  haven't already**.
+- Corrected several README/reference-range numbers that had drifted from the actual
+  `app.utils.biology` implementation, and added `docs/database_er_diagram.png`.
 
 ---
 
@@ -129,20 +162,29 @@ SUSPECT_DIVISION_EXCEEDS_CYCLE
 
 Reference ranges for representative biological systems:
 
-| Organism / Model | Division Duration | Cell Cycle |
-| ----------------- | -----------------: | -----------: |
-| *S. cerevisiae*   |          15–45 min |   1.2–4.5 hr |
-| *E. coli*         |           8–35 min |   0.3–2.0 hr |
-| Human / HeLa      |         40–150 min |    14–36 hr |
-| Mouse / NIH-3T3   |         45–160 min |    12–32 hr |
+| Organism / Model | Division Duration | Cell Cycle | Normal Temp. |
+| ----------------- | -----------------: | -----------: | -----------: |
+| *S. cerevisiae*   |          15–55 min |   1.0–4.5 hr |   18–40 °C |
+| *E. coli*         |           8–35 min |  0.25–2.5 hr |   15–44 °C |
+| *S. pombe*        |          15–60 min |   1.8–5.0 hr |   18–38 °C |
+| Human / HeLa      |         35–160 min |    14–40 hr |   32–41 °C |
+| Mouse / NIH-3T3   |         35–150 min |    12–36 hr |   32–41 °C |
 
-> These ranges are **development/reference rules**, not substitutes for laboratory-specific validated SOPs.
+> **These are QC / reference-screening thresholds, not biological absolutes.**
+> `app.utils.biology.BIOLOGICAL_REFERENCE_RANGES` encodes reasonable domain
+> heuristics used to flag *implausible data entry* (e.g. more than 2× outside
+> the typical window for that organism), not peer-reviewed diagnostic cutoffs.
+> They are not a substitute for laboratory-specific validated SOPs, and no
+> literature citation is claimed for the exact numeric bounds — treat them as
+> an assumed/reference dataset, not a sourced one.
 
 ---
 
 ## 🏗️ System Architecture
 
 ![System Architecture](docs/system_design.png)
+
+![Database ER Diagram](docs/database_er_diagram.png)
 
 The backend follows a layered architecture that separates API handling, business logic, data access, and persistence.
 
@@ -199,7 +241,7 @@ Implemented using **FastAPI, SQLAlchemy 2.0, Pydantic v2, and Alembic**, with Po
 ## ⚙️ Technology Stack
 
 **Backend**
-- Python 3.11+
+- Python 3.12+
 - FastAPI
 - Pydantic v2
 - SQLAlchemy 2.0
@@ -294,12 +336,12 @@ cell_division_timer/
 │   │   └── synthetic_cell_divisions_100.json
 │   │
 │   ├── output/
-│   │   └── cell_division_export.csv    (generated; not committed)
+│   │   └── cell_division_export.csv    
 │   │
 │   ├── scripts/
 │   │   ├── export_data.py
 │   │   ├── seed.py
-│   │   └── test_ncbi.py
+│   │   └── ncbi_manual_check.py
 │   │
 │   ├── tests/
 │   │   ├── conftest.py
@@ -374,9 +416,13 @@ temperature_celsius
 generation
 division_start_time
 division_end_time
-division_duration_minutes
+division_duration_minutes        # official value: calculated, or an explicit override
 cell_cycle_duration_hours
-growth_rate
+growth_rate                      # official value: calculated, or an explicit override
+duration_override_minutes        # nullable; must be paired with a reason
+duration_override_reason         # nullable; required whenever an override is set
+growth_rate_override             # nullable; must be paired with a reason
+growth_rate_override_reason      # nullable; required whenever an override is set
 is_outlier
 quality_flag
 notes
@@ -384,6 +430,18 @@ metadata_json
 created_at
 updated_at
 ```
+
+`division_duration_minutes` and `growth_rate` are always derived from the source
+measurements (`division_start_time`/`division_end_time` and
+`cell_cycle_duration_hours`) unless a scientist explicitly sets one of the
+`*_override` fields together with its `*_override_reason` — a CHECK constraint
+enforces that an override value and its reason are always set (or cleared)
+together, so a manual correction can never silently look like a raw
+calculation. The API always returns both the official value and the raw
+`calculated_duration_minutes` / `calculated_growth_rate`, so an active
+override is never invisible to a caller. See
+[`docs/database_er_diagram.png`](docs/database_er_diagram.png) for the full
+schema, including indexes and constraints.
 
 Relationship:
 
@@ -642,7 +700,7 @@ These interfaces let developers and researchers interactively test the API witho
 
 ```bash
 cd cell_division_timer_fastapi
-cp .env.example .env   # fill in your own NCBI key/email first
+cp .env.example .env   
 docker compose up --build
 ```
 
@@ -800,7 +858,7 @@ Licensed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
 
 ## 👨‍💻 Author
 
-**Sunil Narayan**
+**Sunil Mandloi**
 Biotechnology / Life-Sciences Technology
 
 Interested in: Biotechnology · Computational Biology · Life-Science Data Analytics · Bioinformatics · Healthcare Technology · Scientific Software · Biotechnology Business & Strategy

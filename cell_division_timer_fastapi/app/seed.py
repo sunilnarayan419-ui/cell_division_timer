@@ -11,7 +11,8 @@ import os
 import random
 from datetime import datetime, timedelta, timezone
 from typing import List, Tuple
-from app.core.database import Base, SessionLocal, engine
+from sqlalchemy import inspect
+from app.core.database import SessionLocal, engine
 from app.core.logging import logger
 from app.models.cell import Cell
 from app.models.division import CellDivisionRecord
@@ -196,8 +197,24 @@ def seed_database(force_reseed: bool = False) -> int:
 
     Returns:
         int: Number of division records present in database after seeding.
+
+    Raises:
+        RuntimeError: If the required tables do not exist, i.e. Alembic
+            migrations have not been applied yet. Schema management is owned
+            exclusively by Alembic (`alembic upgrade head`); this script
+            deliberately does NOT call `Base.metadata.create_all()`, since
+            doing so would let the schema silently diverge from migrations.
     """
-    Base.metadata.create_all(bind=engine)
+    inspector = inspect(engine)
+    required_tables = {"cells", "cell_division_records"}
+    existing_tables = set(inspector.get_table_names())
+    if not required_tables.issubset(existing_tables):
+        missing = required_tables - existing_tables
+        raise RuntimeError(
+            "Cannot seed database: required table(s) "
+            f"{sorted(missing)} do not exist. Run `alembic upgrade head` first."
+        )
+
     db = SessionLocal()
 
     try:
